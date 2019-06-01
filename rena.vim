@@ -6,24 +6,78 @@
 " This software is released under the MIT License.
 " http://opensource.org/licenses/mit-license.php
 "
+function! s:maketrie(keys)
+    let trie = { "trie": {}, "terminate": 0 }
+    let trieNow = trie
+    for key in a:keys
+        let i = 0
+        let trieNow = trie
+        while i < strlen(key)
+            if has_key(trieNow.trie, key[i])
+                let trieNow = trieNow.trie[key[i]]
+            else
+                let trieNow.trie[key[i]] = { "trie": {}, "terminate": 0 }
+                let trieNow = trieNow.trie[key[i]]
+            endif
+            let i += 1
+        endwhile
+        let trieNow.terminate = 1
+    endfor
+    return trie
+endfunction
+
+function! s:getkey(trie, match, index)
+    let trie = a:trie
+    let i = a:index
+    let result = ""
+    while i < strlen(a:match)
+        if has_key(trie.trie, a:match[i])
+            let trie = trie.trie[a:match[i]]
+            if trie.terminate is 1
+                let result = a:match[a:index:i]
+            endif
+        else
+            return result
+        endif
+        let i += 1
+    endwhile
+    if trie.terminate is 1
+        let result = a:match[a:index:i]
+    endif
+    return result
+endfunction
+
 function! Rena(...)
-    let option = { "ignore": 0, "keys": 0 }
+    let flags = { "ignore": 0, "keys": 0 }
     if a:0 >= 1
-        let option = a:1
+        if has_key(a:1, "ignore")
+            let flags.ignore = a:1["ignore"]
+        endif
+        if has_key(a:1, "keys")
+            let flags.keys = s:maketrie(a:1["keys"])
+        endif
     endif
     let me = {}
 
     function! s:ignore(match, lastIndex) closure
-        if option["ignore"] is 0
+        if flags.ignore is 0
             return a:lastIndex
         endif
-        let Exp = option["ignore"]
+        let Exp = flags.ignore
         let result = Exp(a:match, a:lastIndex, 0)
         if result is 0
             return a:lastIndex
         else
-            return result["lastIndex"]
+            return result.lastIndex
         endif
+    endfunction
+
+    function! s:getkeyInner(match, index) closure
+        if flags.keys is 0
+            return ""
+        endif
+        let result = s:getkey(flags.keys, a:match, a:index)
+        return result
     endfunction
 
     function me.str(str) dict
@@ -179,6 +233,31 @@ function! Rena(...)
             endif
         endfunction
         return funcref("s:actionProcess")
+    endfunction
+
+    function me.key(key) dict
+        let key = a:key
+        function! s:keyProcess(match, lastIndex, attr) closure
+            let matchedKey = s:getkeyInner(a:match, a:lastIndex)
+            if matchedKey ==# key
+                return { "matched": key, "lastIndex": a:lastIndex + strlen(key), "attr": a:attr }
+            else
+                return 0
+            endif
+        endfunction
+        return funcref("s:keyProcess")
+    endfunction
+
+    function me.notKey() dict
+        function! s:notKeyProcess(match, lastIndex, attr) closure
+            let matchedKey = s:getkeyInner(a:match, a:lastIndex)
+            if matchedKey ==# ""
+                return { "matched": "", "lastIndex": a:lastIndex, "attr": a:attr }
+            else
+                return 0
+            endif
+        endfunction
+        return funcref("s:notKeyProcess")
     endfunction
 
     return me
