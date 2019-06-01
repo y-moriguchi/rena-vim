@@ -336,6 +336,26 @@ function! Rena(...)
         return funcref("s:equalsIdProcess")
     endfunction
 
+    function me.attr(attr) dict
+        let attrNew = a:attr
+        function! s:attrProcess(match, lastIndex, attr) closure
+            return { "matched": "", "lastIndex": a:lastIndex, "attr": attrNew }
+        endfunction
+        return funcref("s:attrProcess")
+    endfunction
+
+    function me.cond(Pred) dict
+        let Pred = a:Pred
+        function! s:condProcess(match, lastIndex, attr) closure
+            if Pred(a:attr)
+                return { "matched": "", "lastIndex": a:lastIndex, "attr": a:attr }
+            else
+                return 0
+            endif
+        endfunction
+        return funcref("s:condProcess")
+    endfunction
+
     return me
 endfunction
 
