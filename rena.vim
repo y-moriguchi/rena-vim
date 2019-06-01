@@ -95,6 +95,19 @@ function! Rena(...)
         return funcref("s:strProcess")
     endfunction
 
+    function me.regex(regex) dict
+        let regex = a:regex
+        function! s:regexProcess(match, lastIndex, attr) closure
+            let position = matchstrpos(a:match, regex, a:lastIndex)
+            if position[1] == a:lastIndex
+                return { "matched": position[0], "lastIndex": position[2], "attr": a:attr }
+            else
+                return 0
+            endif
+        endfunction
+        return funcref("s:regexProcess")
+    endfunction
+
     function me.then(...) dict
         let args = copy(a:000)
         function! s:thenProcess(match, lastIndex, attr) closure
