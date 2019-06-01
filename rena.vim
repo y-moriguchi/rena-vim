@@ -80,7 +80,7 @@ function! Rena(...)
         return result
     endfunction
 
-    function me.str(str) dict
+    function! s:matchString(str) closure
         let str = a:str
         function! s:strProcess(match, lastIndex, attr) closure
             if str ==# strpart(a:match, a:lastIndex, strlen(str))
@@ -90,6 +90,14 @@ function! Rena(...)
             endif
         endfunction
         return funcref("s:strProcess")
+    endfunction
+
+    function! s:flagsNotDefined() closure
+        return flags.ignore is 0 && flags.keys is 0
+    endfunction
+
+    function me.str(str) dict
+        return s:matchString(a:str)
     endfunction
 
     function me.then(...) dict
@@ -295,6 +303,29 @@ function! Rena(...)
             endif
         endfunction
         return funcref("s:notKeyProcess")
+    endfunction
+
+    function me.equalsId(key) dict
+        let key = a:key
+        let MatchKey = s:matchString(key)
+        function! s:equalsIdProcess(match, lastIndex, attr) closure
+            let result = MatchKey(a:match, a:lastIndex, a:attr)
+            if result is 0
+                return 0
+            endif
+            let indexIgnore = s:ignore(a:match, result.lastIndex)
+            let matchedKey = s:getkeyInner(a:match, result.lastIndex)
+            if s:flagsNotDefined()
+                return result
+            elseif result.lastIndex >= strlen(a:match) || indexIgnore > result.lastIndex
+                return { "matched": result.matched, "lastIndex": indexIgnore, "attr": result.attr }
+            elseif matchedKey !=# ""
+                return result
+            else
+                return 0
+            endif
+        endfunction
+        return funcref("s:equalsIdProcess")
     endfunction
 
     return me
