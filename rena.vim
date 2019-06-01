@@ -193,6 +193,43 @@ function! Rena(...)
         return self.times(0, 1, a:Exp)
     endfunction
 
+    function me.delimit(Exp, Delimiter, ...) dict
+        let Exp = a:Exp
+        let Delimiter = a:Delimiter
+        let Action = { matched, syn, inh -> syn }
+        if a:0 >= 1
+            let Action = a:1
+        endif
+        function! s:delimitProcess(match, lastIndex, attr) closure
+            let matched = ""
+            let indexNew = a:lastIndex
+            let attrNew = a:attr
+            let indexDelimit = a:lastIndex
+            let alreadyMatched = 0
+            while 1
+                let result = Exp(a:match, indexDelimit, attrNew)
+                if result is 0
+                    if alreadyMatched is 0
+                        return 0
+                    else
+                        return { "matched": matched, "lastIndex": indexNew, "attr": attrNew }
+                    endif
+                else
+                    let indexNew = s:ignore(a:match, result.lastIndex)
+                    let matched = strpart(a:match, a:lastIndex, indexNew)
+                    let attrNew = Action(matched, result.attr, attrNew)
+                    let resultDelimit = Delimiter(a:match, indexNew, attrNew)
+                    if resultDelimit is 0
+                        return { "matched": matched, "lastIndex": indexNew, "attr": attrNew }
+                    endif
+                    let indexDelimit = s:ignore(a:match, resultDelimit.lastIndex)
+                endif
+                let alreadyMatched = 1
+            endwhile
+        endfunction
+        return funcref("s:delimitProcess")
+    endfunction
+
     function me.lookahead(Exp) dict
         let Exp = a:Exp
         function! s:lookaheadProcess(match, lastIndex, attr) closure
