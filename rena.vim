@@ -48,22 +48,21 @@ function! s:getkey(trie, match, index)
 endfunction
 
 function! Rena(...)
-    let flags = { "ignore": 0, "keys": 0 }
+    let me = { "_ignore": 0, "keys": 0 }
     if a:0 >= 1
         if has_key(a:1, "ignore")
-            let flags.ignore = a:1["ignore"]
+            let me._ignore = a:1["ignore"]
         endif
         if has_key(a:1, "keys")
-            let flags.keys = s:maketrie(a:1["keys"])
+            let me.keys = s:maketrie(a:1["keys"])
         endif
     endif
-    let me = {}
 
-    function! s:ignore(match, lastIndex) closure
-        if flags.ignore is 0
+    function me.ignore(match, lastIndex) dict
+        if self._ignore is 0
             return a:lastIndex
         endif
-        let Exp = flags.ignore
+        let Exp = self._ignore
         let result = Exp(a:match, a:lastIndex, 0)
         if result is 0
             return a:lastIndex
@@ -72,15 +71,19 @@ function! Rena(...)
         endif
     endfunction
 
-    function! s:getkeyInner(match, index) closure
-        if flags.keys is 0
+    function me.getkeyInner(match, index) dict
+        if self.keys is 0
             return ""
         endif
-        let result = s:getkey(flags.keys, a:match, a:index)
+        let result = s:getkey(self.keys, a:match, a:index)
         return result
     endfunction
 
-    function! s:matchString(str) closure
+    function me.flagsNotDefined() dict
+        return self._ignore is 0 && self.keys is 0
+    endfunction
+
+    function me.str(str) dict
         let str = a:str
         function! s:strProcess(match, lastIndex, attr) closure
             if str ==# strpart(a:match, a:lastIndex, strlen(str))
@@ -90,14 +93,6 @@ function! Rena(...)
             endif
         endfunction
         return funcref("s:strProcess")
-    endfunction
-
-    function! s:flagsNotDefined() closure
-        return flags.ignore is 0 && flags.keys is 0
-    endfunction
-
-    function me.str(str) dict
-        return s:matchString(a:str)
     endfunction
 
     function me.then(...) dict
@@ -111,7 +106,7 @@ function! Rena(...)
                 if result is 0
                     return 0
                 else
-                    let indexNew = s:ignore(a:match, result["lastIndex"])
+                    let indexNew = self.ignore(a:match, result["lastIndex"])
                     let attrNew = result["attr"]
                 endif
             endfor
@@ -154,7 +149,7 @@ function! Rena(...)
                         return { "matched": matched, "lastIndex": indexNew, "attr": attrNew }
                     endif
                 else
-                    let indexNew = s:ignore(a:match, result["lastIndex"])
+                    let indexNew = self.ignore(a:match, result["lastIndex"])
                     let matched = strpart(a:match, a:lastIndex, indexNew)
                     let attrNew = Action(matched, result["attr"], attrNew)
                     let i = i + 1
@@ -223,14 +218,14 @@ function! Rena(...)
                         return { "matched": matched, "lastIndex": indexNew, "attr": attrNew }
                     endif
                 else
-                    let indexNew = s:ignore(a:match, result.lastIndex)
+                    let indexNew = self.ignore(a:match, result.lastIndex)
                     let matched = strpart(a:match, a:lastIndex, indexNew)
                     let attrNew = Action(matched, result.attr, attrNew)
                     let resultDelimit = Delimiter(a:match, indexNew, attrNew)
                     if resultDelimit is 0
                         return { "matched": matched, "lastIndex": indexNew, "attr": attrNew }
                     endif
-                    let indexDelimit = s:ignore(a:match, resultDelimit.lastIndex)
+                    let indexDelimit = self.ignore(a:match, resultDelimit.lastIndex)
                 endif
                 let alreadyMatched = 1
             endwhile
@@ -283,7 +278,7 @@ function! Rena(...)
     function me.key(key) dict
         let key = a:key
         function! s:keyProcess(match, lastIndex, attr) closure
-            let matchedKey = s:getkeyInner(a:match, a:lastIndex)
+            let matchedKey = self.getkeyInner(a:match, a:lastIndex)
             if matchedKey ==# key
                 return { "matched": key, "lastIndex": a:lastIndex + strlen(key), "attr": a:attr }
             else
@@ -295,7 +290,7 @@ function! Rena(...)
 
     function me.notKey() dict
         function! s:notKeyProcess(match, lastIndex, attr) closure
-            let matchedKey = s:getkeyInner(a:match, a:lastIndex)
+            let matchedKey = self.getkeyInner(a:match, a:lastIndex)
             if matchedKey ==# ""
                 return { "matched": "", "lastIndex": a:lastIndex, "attr": a:attr }
             else
@@ -307,15 +302,15 @@ function! Rena(...)
 
     function me.equalsId(key) dict
         let key = a:key
-        let MatchKey = s:matchString(key)
+        let MatchKey = self.str(key)
         function! s:equalsIdProcess(match, lastIndex, attr) closure
             let result = MatchKey(a:match, a:lastIndex, a:attr)
             if result is 0
                 return 0
             endif
-            let indexIgnore = s:ignore(a:match, result.lastIndex)
-            let matchedKey = s:getkeyInner(a:match, result.lastIndex)
-            if s:flagsNotDefined()
+            let indexIgnore = self.ignore(a:match, result.lastIndex)
+            let matchedKey = self.getkeyInner(a:match, result.lastIndex)
+            if self.flagsNotDefined()
                 return result
             elseif result.lastIndex >= strlen(a:match) || indexIgnore > result.lastIndex
                 return { "matched": result.matched, "lastIndex": indexIgnore, "attr": result.attr }
