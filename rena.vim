@@ -1,69 +1,24 @@
 "
 " Rena Vim Script
 "
-" Copyright (c) 2019 Yuichiro MORIGUCHI
-"
-" This software is released under the MIT License.
-" http://opensource.org/licenses/mit-license.php
-"
-function! s:maketrie(keys)
-    let trie = { "trie": {}, "terminate": 0 }
-    let trieNow = trie
-    for key in a:keys
-        let i = 0
-        let trieNow = trie
-        while i < strlen(key)
-            if has_key(trieNow.trie, key[i])
-                let trieNow = trieNow.trie[key[i]]
-            else
-                let trieNow.trie[key[i]] = { "trie": {}, "terminate": 0 }
-                let trieNow = trieNow.trie[key[i]]
-            endif
-            let i += 1
-        endwhile
-        let trieNow.terminate = 1
-    endfor
-    return trie
-endfunction
-
-function! s:getkey(trie, match, index)
-    let trie = a:trie
-    let i = a:index
-    let result = ""
-    while i < strlen(a:match)
-        if has_key(trie.trie, a:match[i])
-            let trie = trie.trie[a:match[i]]
-            if trie.terminate is 1
-                let result = a:match[a:index:i]
-            endif
-        else
-            return result
-        endif
-        let i += 1
-    endwhile
-    if trie.terminate is 1
-        let result = a:match[a:index:i]
-    endif
-    return result
-endfunction
-
 function! Rena(...)
-    let me = { "_ignore": 0, "keys": 0 }
+    let me = {}
+    let Ignore = 0
+    let keys = 0
     if a:0 >= 1
         if has_key(a:1, "ignore")
-            let me._ignore = a:1["ignore"]
+            let Ignore = a:1["ignore"]
         endif
         if has_key(a:1, "keys")
-            let me.keys = s:maketrie(a:1["keys"])
+            let keys = a:1["keys"]
         endif
     endif
 
-    function me.ignore(match, lastIndex) dict
-        if self._ignore is 0
+    function me.ignore(match, lastIndex) closure
+        if ignore is 0
             return a:lastIndex
         endif
-        let Exp = self._ignore
-        let result = Exp(a:match, a:lastIndex, 0)
+        let result = Ignore(a:match, a:lastIndex, 0)
         if result is 0
             return a:lastIndex
         else
@@ -71,33 +26,23 @@ function! Rena(...)
         endif
     endfunction
 
-    function me.getkeyInner(match, index) dict
-        if self.keys is 0
-            return ""
-        endif
-        let result = s:getkey(self.keys, a:match, a:index)
-        return result
-    endfunction
-
-    function me.flagsNotDefined() dict
-        return self._ignore is 0 && self.keys is 0
-    endfunction
-
-    function me.str(str) dict
+    function me.str(str) closure
         let str = a:str
-        function! s:strProcess(match, lastIndex, attr) closure
+        let ret = {}
+        function! ret.strProcess(match, lastIndex, attr) closure
             if str ==# strpart(a:match, a:lastIndex, strlen(str))
                 return { "matched": str, "lastIndex": a:lastIndex + strlen(str), "attr": a:attr }
             else
                 return 0
             endif
         endfunction
-        return funcref("s:strProcess")
+        return ret.strProcess
     endfunction
 
-    function me.regex(regex) dict
+    function me.regex(regex) closure
         let regex = a:regex
-        function! s:regexProcess(match, lastIndex, attr) closure
+        let ret = {}
+        function! ret.regexProcess(match, lastIndex, attr) closure
             let position = matchstrpos(a:match, regex, a:lastIndex)
             if position[1] == a:lastIndex
                 return { "matched": position[0], "lastIndex": position[2], "attr": a:attr }
@@ -105,12 +50,14 @@ function! Rena(...)
                 return 0
             endif
         endfunction
-        return funcref("s:regexProcess")
+        return ret.regexProcess
     endfunction
 
-    function me.then(...) dict
+    function me.concat0(isSkip, ...) closure
         let args = copy(a:000)
-        function! s:thenProcess(match, lastIndex, attr) closure
+        let isSkip = a:isSkip
+        let ret = {}
+        function! ret.thenProcess(match, lastIndex, attr) closure
             let matched = ""
             let indexNew = a:lastIndex
             let attrNew = a:attr
@@ -119,18 +66,28 @@ function! Rena(...)
                 if result is 0
                     return 0
                 else
-                    let indexNew = self.ignore(a:match, result["lastIndex"])
+                    if isSkip
+                        let indexNew = me.ignore(a:match, result["lastIndex"])
+                    else
+                        let indexNew = result["lastIndex"]
+                    endif
                     let attrNew = result["attr"]
                 endif
             endfor
             return { "matched": strpart(a:match, a:lastIndex, indexNew), "lastIndex": indexNew, "attr": attrNew }
         endfunction
-        return funcref("s:thenProcess")
+        return ret.thenProcess
     endfunction
 
-    function me.choice(...) dict
+    function me.concat(...) closure
+        let args = [0] + copy(a:000)
+        return call(me.concat0, args)
+    endfunction
+
+    function me.choice(...) closure
         let args = copy(a:000)
-        function! s:choiceProcess(match, lastIndex, attr) closure
+        let ret = {}
+        function! ret.choiceProcess(match, lastIndex, attr) closure
             for Arg in args
                 let result = Arg(a:match, a:lastIndex, a:attr)
                 if result isnot 0
@@ -139,16 +96,13 @@ function! Rena(...)
             endfor
             return 0
         endfunction
-        return funcref("s:choiceProcess")
+        return ret.choiceProcess
     endfunction
 
-    function me.times(mincount, maxcount, Exp, ...) dict
-        let Exp = a:Exp
-        let Action = { matched, syn, inh -> syn }
-        if a:0 >= 1
-            let Action = a:1
-        endif
-        function! s:timesProcess(match, lastIndex, attr) closure
+    function me.times(mincount, maxcount, exp) closure
+        let Exp = a:exp
+        let ret = {}
+        function! ret.timesProcess(match, lastIndex, attr) closure
             let matched = ""
             let indexNew = a:lastIndex
             let attrNew = a:attr
@@ -162,106 +116,37 @@ function! Rena(...)
                         return { "matched": matched, "lastIndex": indexNew, "attr": attrNew }
                     endif
                 else
-                    let indexNew = self.ignore(a:match, result["lastIndex"])
+                    let indexNew = me.ignore(a:match, result["lastIndex"])
                     let matched = strpart(a:match, a:lastIndex, indexNew)
-                    let attrNew = Action(matched, result["attr"], attrNew)
+                    let attrNew = result["attr"]
                     let i = i + 1
                 endif
             endwhile
             return { "matched": matched, "lastIndex": indexNew, "attr": attrNew }
         endfunction
-        return funcref("s:timesProcess")
+        return ret.timesProcess
     endfunction
 
-    function me.atLeast(mincount, Exp, ...) dict
-        let Action = { matched, syn, inh -> syn }
-        if a:0 >= 1
-            let Action = a:1
-        endif
-        return self.times(a:mincount, 0, a:Exp, Action)
+    function me.oneOrMore(Exp) closure
+        return me.times(1, 0, a:Exp)
     endfunction
 
-    function me.atMost(maxcount, Exp, ...) dict
-        let Action = { matched, syn, inh -> syn }
-        if a:0 >= 1
-            let Action = a:1
-        endif
-        return self.times(0, a:maxcount, a:Exp, Action)
+    function me.zeroOrMOre(Exp) closure
+        return me.times(0, 0, a:Exp)
     endfunction
 
-    function me.oneOrMore(Exp, ...) dict
-        let Action = { matched, syn, inh -> syn }
-        if a:0 >= 1
-            let Action = a:1
-        endif
-        return self.times(1, 0, a:Exp, Action)
+    function me.opt(Exp) closure
+        return me.times(0, 1, a:Exp)
     endfunction
 
-    function me.zeroOrMOre(Exp, ...) dict
-        let Action = { matched, syn, inh -> syn }
-        if a:0 >= 1
-            let Action = a:1
-        endif
-        return self.times(0, 0, a:Exp, Action)
+    function me.lookahead(Exp) closure
+        return me.lookaheadNot(me.lookaheadNot(a:Exp))
     endfunction
 
-    function me.maybe(Exp) dict
-        return self.times(0, 1, a:Exp)
-    endfunction
-
-    function me.delimit(Exp, Delimiter, ...) dict
+    function me.lookaheadNot(Exp) closure
         let Exp = a:Exp
-        let Delimiter = a:Delimiter
-        let Action = { matched, syn, inh -> syn }
-        if a:0 >= 1
-            let Action = a:1
-        endif
-        function! s:delimitProcess(match, lastIndex, attr) closure
-            let matched = ""
-            let indexNew = a:lastIndex
-            let attrNew = a:attr
-            let indexDelimit = a:lastIndex
-            let alreadyMatched = 0
-            while 1
-                let result = Exp(a:match, indexDelimit, attrNew)
-                if result is 0
-                    if alreadyMatched is 0
-                        return 0
-                    else
-                        return { "matched": matched, "lastIndex": indexNew, "attr": attrNew }
-                    endif
-                else
-                    let indexNew = self.ignore(a:match, result.lastIndex)
-                    let matched = strpart(a:match, a:lastIndex, indexNew)
-                    let attrNew = Action(matched, result.attr, attrNew)
-                    let resultDelimit = Delimiter(a:match, indexNew, attrNew)
-                    if resultDelimit is 0
-                        return { "matched": matched, "lastIndex": indexNew, "attr": attrNew }
-                    endif
-                    let indexDelimit = self.ignore(a:match, resultDelimit.lastIndex)
-                endif
-                let alreadyMatched = 1
-            endwhile
-        endfunction
-        return funcref("s:delimitProcess")
-    endfunction
-
-    function me.lookahead(Exp) dict
-        let Exp = a:Exp
-        function! s:lookaheadProcess(match, lastIndex, attr) closure
-            let result = Exp(a:match, a:lastIndex, a:attr)
-            if result is 0
-                return 0
-            else
-                return { "matched": "", "lastIndex": a:lastIndex, "attr": a:attr }
-            endif
-        endfunction
-        return funcref("s:lookaheadProcess")
-    endfunction
-
-    function me.lookaheadNot(Exp) dict
-        let Exp = a:Exp
-        function! s:lookaheadProcess(match, lastIndex, attr) closure
+        let ret = {}
+        function! ret.lookaheadProcess(match, lastIndex, attr) closure
             let result = Exp(a:match, a:lastIndex, a:attr)
             if result is 0
                 return { "matched": "", "lastIndex": a:lastIndex, "attr": a:attr }
@@ -269,13 +154,26 @@ function! Rena(...)
                 return 0
             endif
         endfunction
-        return funcref("s:lookaheadProcess")
+        return ret.lookaheadProcess
     endfunction
 
-    function me.action(Exp, Action) dict
+    function me.isEnd() closure
+        let ret = {}
+        function ret.isEndProcess(match, lastIndex, attr) closure
+            if a:lastIndex >= len(a:match)
+                return { "matched": "", "lastIndex": a:lastIndex, "attr": a:attr }
+            else
+                return 0
+            endif
+        endfunction
+        return ret.isEndProcess
+    endfunction
+
+    function me.action(Exp, Action) closure
         let Exp = a:Exp
         let Action = a:Action
-        function! s:actionProcess(match, lastIndex, attr) closure
+        let ret = {}
+        function! ret.actionProcess(match, lastIndex, attr) closure
             let result = Exp(a:match, a:lastIndex, a:attr)
             if result is 0
                 return 0
@@ -285,75 +183,81 @@ function! Rena(...)
                 return retval
             endif
         endfunction
-        return funcref("s:actionProcess")
+        return ret.actionProcess
     endfunction
 
-    function me.key(key) dict
-        let key = a:key
-        function! s:keyProcess(match, lastIndex, attr) closure
-            let matchedKey = self.getkeyInner(a:match, a:lastIndex)
-            if matchedKey ==# key
-                return { "matched": key, "lastIndex": a:lastIndex + strlen(key), "attr": a:attr }
-            else
-                return 0
+    function me.key(key) closure
+        let checkkeys = []
+        for x in keys
+            if len(x) > len(a:key)
+                call add(checkkeys, me.lookaheadNot(me.str(x)))
             endif
-        endfunction
-        return funcref("s:keyProcess")
+        endfor
+        return me.concat(call(me.concat, checkkeys), me.str(a:key))
     endfunction
 
-    function me.notKey() dict
-        function! s:notKeyProcess(match, lastIndex, attr) closure
-            let matchedKey = self.getkeyInner(a:match, a:lastIndex)
-            if matchedKey ==# ""
-                return { "matched": "", "lastIndex": a:lastIndex, "attr": a:attr }
-            else
-                return 0
-            endif
-        endfunction
-        return funcref("s:notKeyProcess")
+    function me.notKey() closure
+        let checkkeys = []
+        for x in keys
+            call add(checkkeys, me.lookaheadNot(me.str(x)))
+        endfor
+        return call(me.concat, checkkeys)
     endfunction
 
-    function me.equalsId(key) dict
-        let key = a:key
-        let MatchKey = self.str(key)
-        function! s:equalsIdProcess(match, lastIndex, attr) closure
-            let result = MatchKey(a:match, a:lastIndex, a:attr)
-            if result is 0
-                return 0
-            endif
-            let indexIgnore = self.ignore(a:match, result.lastIndex)
-            let matchedKey = self.getkeyInner(a:match, result.lastIndex)
-            if self.flagsNotDefined()
-                return result
-            elseif result.lastIndex >= strlen(a:match) || indexIgnore > result.lastIndex
-                return { "matched": result.matched, "lastIndex": indexIgnore, "attr": result.attr }
-            elseif matchedKey !=# ""
-                return result
-            else
-                return 0
-            endif
-        endfunction
-        return funcref("s:equalsIdProcess")
+    function me.equalsId(key) closure
+        if Ignore is 0 && keys is 0
+            return me.str(a:key)
+        elseif !(Ignore is 0) && keys is 0
+            return me.concat0(0, me.str(a:key), me.choice(me.isEnd(), me.lookahead(Ignore)))
+        elseif Ignore is 0 && !(keys is 0)
+            return me.concat0(0, me.str(a:key), me.choice(me.isEnd(), me.lookaheadNot(me.notKey())))
+        else
+            return me.concat0(0, me.str(a:key), me.choice(me.isEnd(), me.lookahead(Ignore), me.lookaheadNot(me.notKey())))
+        endif
     endfunction
 
-    function me.attr(attr) dict
+    function me.attr(attr) closure
         let attrNew = a:attr
-        function! s:attrProcess(match, lastIndex, attr) closure
+        let ret = {}
+        function! ret.attrProcess(match, lastIndex, attr) closure
             return { "matched": "", "lastIndex": a:lastIndex, "attr": attrNew }
         endfunction
-        return funcref("s:attrProcess")
+        return ret.attrProcess
     endfunction
 
-    function me.cond(Pred) dict
+    function me.cond(Pred) closure
         let Pred = a:Pred
-        function! s:condProcess(match, lastIndex, attr) closure
+        let ret = {}
+        function! ret.condProcess(match, lastIndex, attr) closure
             if Pred(a:attr)
                 return { "matched": "", "lastIndex": a:lastIndex, "attr": a:attr }
             else
                 return 0
             endif
         endfunction
-        return funcref("s:condProcess")
+        return ret.condProcess
+    endfunction
+
+    function me.letrec(...) closure
+        let args = copy(a:000)
+        let delays = []
+        let memo = []
+        let inner = {}
+        function inner.memorize(index, match, lastIndex, attr) closure
+            if memo[a:index] is 0
+                let memo[a:index] = call(args[a:index], delays)
+            endif
+            let ToCall = memo[a:index]
+            return ToCall(a:match, a:lastIndex, a:attr)
+        endfunction
+        function inner.passindex(index) closure
+            call add(delays, {match, lastIndex, attr -> inner.memorize(a:index, match, lastIndex, attr)})
+        endfunction
+        for i in range(len(args))
+            call inner.passindex(i)
+            call add(memo, 0)
+        endfor
+        return delays[0]
     endfunction
 
     return me
