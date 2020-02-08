@@ -5,6 +5,8 @@ function! Rena(...)
     let me = {}
     let Ignore = 0
     let keys = 0
+    let realRegex = "[-+]\\?\\([0-9]\\+\\(\\.[0-9]\\+\\)\\?\\|\\.[0-9]\\+\\)\\([eE][-+]\\?[0-9]\\+\\)\\?"
+
     if a:0 >= 1
         if has_key(a:1, "ignore")
             let Ignore = a:1["ignore"]
@@ -15,7 +17,7 @@ function! Rena(...)
     endif
 
     function me.ignore(match, lastIndex) closure
-        if ignore is 0
+        if Ignore is 0
             return a:lastIndex
         endif
         let result = Ignore(a:match, a:lastIndex, 0)
@@ -31,7 +33,7 @@ function! Rena(...)
         let ret = {}
         function! ret.strProcess(match, lastIndex, attr) closure
             if str ==# strpart(a:match, a:lastIndex, strlen(str))
-                return { "matched": str, "lastIndex": a:lastIndex + strlen(str), "attr": a:attr }
+                return { "match": str, "lastIndex": a:lastIndex + strlen(str), "attr": a:attr }
             else
                 return 0
             endif
@@ -39,13 +41,13 @@ function! Rena(...)
         return ret.strProcess
     endfunction
 
-    function me.regex(regex) closure
+    function me.re(regex) closure
         let regex = a:regex
         let ret = {}
         function! ret.regexProcess(match, lastIndex, attr) closure
             let position = matchstrpos(a:match, regex, a:lastIndex)
             if position[1] == a:lastIndex
-                return { "matched": position[0], "lastIndex": position[2], "attr": a:attr }
+                return { "match": position[0], "lastIndex": position[2], "attr": a:attr }
             else
                 return 0
             endif
@@ -74,7 +76,7 @@ function! Rena(...)
                     let attrNew = result["attr"]
                 endif
             endfor
-            return { "matched": strpart(a:match, a:lastIndex, indexNew), "lastIndex": indexNew, "attr": attrNew }
+            return { "match": strpart(a:match, a:lastIndex, indexNew), "lastIndex": indexNew, "attr": attrNew }
         endfunction
         return ret.thenProcess
     endfunction
@@ -113,7 +115,7 @@ function! Rena(...)
                     if i < a:mincount
                         return 0
                     else
-                        return { "matched": matched, "lastIndex": indexNew, "attr": attrNew }
+                        return { "match": matched, "lastIndex": indexNew, "attr": attrNew }
                     endif
                 else
                     let indexNew = me.ignore(a:match, result["lastIndex"])
@@ -122,7 +124,7 @@ function! Rena(...)
                     let i = i + 1
                 endif
             endwhile
-            return { "matched": matched, "lastIndex": indexNew, "attr": attrNew }
+            return { "match": matched, "lastIndex": indexNew, "attr": attrNew }
         endfunction
         return ret.timesProcess
     endfunction
@@ -131,7 +133,7 @@ function! Rena(...)
         return me.times(1, 0, a:Exp)
     endfunction
 
-    function me.zeroOrMOre(Exp) closure
+    function me.zeroOrMore(Exp) closure
         return me.times(0, 0, a:Exp)
     endfunction
 
@@ -149,7 +151,7 @@ function! Rena(...)
         function! ret.lookaheadProcess(match, lastIndex, attr) closure
             let result = Exp(a:match, a:lastIndex, a:attr)
             if result is 0
-                return { "matched": "", "lastIndex": a:lastIndex, "attr": a:attr }
+                return { "match": "", "lastIndex": a:lastIndex, "attr": a:attr }
             else
                 return 0
             endif
@@ -161,7 +163,7 @@ function! Rena(...)
         let ret = {}
         function ret.isEndProcess(match, lastIndex, attr) closure
             if a:lastIndex >= len(a:match)
-                return { "matched": "", "lastIndex": a:lastIndex, "attr": a:attr }
+                return { "match": "", "lastIndex": a:lastIndex, "attr": a:attr }
             else
                 return 0
             endif
@@ -179,7 +181,7 @@ function! Rena(...)
                 return 0
             else
                 let retval = copy(result)
-                let retval["attr"] = Action(retval["matched"], retval["attr"], a:attr)
+                let retval["attr"] = Action(retval["match"], retval["attr"], a:attr)
                 return retval
             endif
         endfunction
@@ -220,7 +222,7 @@ function! Rena(...)
         let attrNew = a:attr
         let ret = {}
         function! ret.attrProcess(match, lastIndex, attr) closure
-            return { "matched": "", "lastIndex": a:lastIndex, "attr": attrNew }
+            return { "match": "", "lastIndex": a:lastIndex, "attr": attrNew }
         endfunction
         return ret.attrProcess
     endfunction
@@ -230,12 +232,16 @@ function! Rena(...)
         let ret = {}
         function! ret.condProcess(match, lastIndex, attr) closure
             if Pred(a:attr)
-                return { "matched": "", "lastIndex": a:lastIndex, "attr": a:attr }
+                return { "match": "", "lastIndex": a:lastIndex, "attr": a:attr }
             else
                 return 0
             endif
         endfunction
         return ret.condProcess
+    endfunction
+
+    function me.real() closure
+        return me.action(me.re(realRegex), { match, syn, inh -> str2float(match) })
     endfunction
 
     function me.letrec(...) closure
