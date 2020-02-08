@@ -1,5 +1,5 @@
 "
-" Rena Vim Script
+" This source code is under the Unlicense.
 "
 function! Rena(...)
     let me = {}

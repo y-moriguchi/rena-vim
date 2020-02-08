@@ -1,3 +1,6 @@
+"
+" This source code is under the Unlicense.
+"
 function! s:ok(Exp, string, match, lastIndex)
     let result = a:Exp(a:string, 0, 0)
     if result is 0
